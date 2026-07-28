@@ -1,23 +1,9 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-
-def get_city_time(time_zone_name):
-    """Считает точное время в любой часовой зоне встроенными средствами Python"""
-    try:
-        now = datetime.now(ZoneInfo(time_zone_name))
-        return now.strftime("%H:%M")
-    except Exception as e:
-        print(f"Ошибка: {e}")
-        return "Н/Д"
-
-
-# Получаем время без внешних сайтов и API
-moscow_time = get_city_time("Europe/Moscow")
-ny_time = get_city_time("America/New_York")
+# Фиксируем момент, когда Python-скрипт сгенерировал страницу
 last_update = datetime.now(ZoneInfo("UTC")).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-# Формируем HTML-страницу
 html_content = f"""<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -55,6 +41,7 @@ html_content = f"""<!DOCTYPE html>
             padding: 1rem 1.5rem;
             border-radius: 10px;
             border: 1px solid #30363d;
+            min-width: 140px;
         }}
         .city {{ font-size: 0.9rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }}
         .clock {{ font-size: 2.2rem; font-weight: bold; color: #f0f6fc; margin-top: 0.3rem; }}
@@ -67,18 +54,47 @@ html_content = f"""<!DOCTYPE html>
         <div class="time-box">
             <div class="time-item">
                 <div class="city">Москва 🇷🇺</div>
-                <div class="clock">{moscow_time}</div>
+                <div class="clock" id="moscow-clock">--:--:--</div>
             </div>
             <div class="time-item">
                 <div class="city">Нью-Йорк 🇺🇸</div>
-                <div class="clock">{ny_time}</div>
+                <div class="clock" id="ny-clock">--:--:--</div>
             </div>
         </div>
         <div class="footer">
-            Автоматически обновлено через Python & GitHub Actions<br>
-            {last_update}
+            Шаблон сгенерирован Python & GitHub Actions<br>
+            Сборка: {last_update}
         </div>
     </div>
+
+    <script>
+        function updateClocks() {{
+            const now = new Date();
+            
+            // Время в Москве
+            const moscow = now.toLocaleTimeString("ru-RU", {{
+                timeZone: "Europe/Moscow",
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit"
+            }});
+            
+            // Время в Нью-Йорке
+            const ny = now.toLocaleTimeString("ru-RU", {{
+                timeZone: "America/New_York",
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit"
+            }});
+
+            document.getElementById("moscow-clock").innerText = moscow;
+            document.getElementById("ny-clock").innerText = ny;
+        }}
+
+        // Обновляем каждую секунду (1000 мс)
+        setInterval(updateClocks, 1000);
+        updateClocks();
+    </script>
 </body>
 </html>
 """
@@ -86,4 +102,4 @@ html_content = f"""<!DOCTYPE html>
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html_content)
 
-print("Сайт успешно обновлён!")
+print("Сайт успешно обновлён с живым JS-моторчиком!")
