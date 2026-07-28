@@ -1,28 +1,23 @@
-import json
-import urllib.request
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 
-def get_time(timezone):
-    """Получает точное время через публичное API"""
+def get_city_time(time_zone_name):
+    """Считает точное время в любой часовой зоне встроенными средствами Python"""
     try:
-        url = f"https://timeapi.io/api/v1/time/current/zone?timeZone={timezone}"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.loads(response.read().decode())
-            # Форматируем время в удобный вид HH:MM
-            return f"{data['hour']:02d}:{data['minute']:02d}"
+        now = datetime.now(ZoneInfo(time_zone_name))
+        return now.strftime("%H:%M")
     except Exception as e:
-        print(f"Ошибка при запросе {timezone}: {e}")
+        print(f"Ошибка: {e}")
         return "Н/Д"
 
 
-# Получаем время для Москвы и Нью-Йорка
-moscow_time = get_time("Europe/Moscow")
-ny_time = get_time("America/New_York")
-last_update = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+# Получаем время без внешних сайтов и API
+moscow_time = get_city_time("Europe/Moscow")
+ny_time = get_city_time("America/New_York")
+last_update = datetime.now(ZoneInfo("UTC")).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-# Формируем красивую HTML-страницу
+# Формируем HTML-страницу
 html_content = f"""<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -88,7 +83,6 @@ html_content = f"""<!DOCTYPE html>
 </html>
 """
 
-# Перезаписываем index.html
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html_content)
 
