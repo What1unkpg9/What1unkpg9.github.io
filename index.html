@@ -1,220 +1,176 @@
 <!DOCTYPE html>
-<html lang="en">
-	<head>
-		<meta charset="utf-8">
-		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
-		<title>MyFirstTest</title>
-		<style>
-html, body, #canvas {
-	margin: 0;
-	padding: 0;
-	border: 0;
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Точное время — Москва и США</title>
+<style>
+  :root { --accent: #4fc3f7; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    min-height:100vh;
+    background:#05070f radial-gradient(circle at 50% 0%, #14213d 0%, #05070f 60%);
+    color:#e8eefc;
+    font-family:'Segoe UI', system-ui, -apple-system, sans-serif;
+    display:flex; flex-direction:column; align-items:center;
+    padding:40px 20px;
+  }
+  header { text-align:center; margin-bottom:40px; }
+  h1 {
+    font-weight:300; font-size:2rem; letter-spacing:.15em;
+    text-transform:uppercase;
+    background:linear-gradient(90deg,#4fc3f7,#7e57c2,#4fc3f7);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .status {
+    margin-top:12px; font-size:.85rem; color:#7a8aa8;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  .dot { width:8px; height:8px; border-radius:50%; background:#ff5252; box-shadow:0 0 8px #ff5252; }
+  .dot.ok { background:#4caf50; box-shadow:0 0 8px #4caf50; }
+  .clocks {
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));
+    gap:24px; width:100%; max-width:1100px;
+  }
+  .card {
+    background:linear-gradient(160deg, rgba(255,255,255,.06), rgba(255,255,255,.01));
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:20px;
+    padding:30px 24px;
+    text-align:center;
+    backdrop-filter:blur(10px);
+    box-shadow:0 20px 40px -20px rgba(0,0,0,.8);
+    transition:transform .3s, border-color .3s;
+  }
+  .card:hover { transform:translateY(-4px); border-color:rgba(79,195,247,.4); }
+  .city {
+    font-size:1.1rem; letter-spacing:.1em;
+    text-transform:uppercase; color:#a8b6d4; margin-bottom:6px;
+  }
+  .flag { font-size:1.4rem; }
+  .time {
+    font-family:'Courier New', monospace;
+    font-size:clamp(2.4rem, 7vw, 3.6rem);
+    font-weight:700;
+    font-variant-numeric:tabular-nums;
+    letter-spacing:.04em;
+    color:#fff;
+    text-shadow:0 0 24px rgba(79,195,247,.5);
+    margin:14px 0 8px;
+  }
+  .colon { color:var(--accent); animation:blink 1s steps(2, start) infinite; }
+  @keyframes blink { to { opacity:.25; } }
+  .date { font-size:.9rem; color:#7a8aa8; }
+  footer { margin-top:40px; font-size:.75rem; color:#4a5875; text-align:center; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Точное время</h1>
+    <div class="status">
+      <span class="dot" id="dot"></span>
+      <span id="statusText">Синхронизация...</span>
+    </div>
+  </header>
+
+  <div class="clocks" id="clocks"></div>
+
+  <footer>Время берётся с серверов точного времени, а не с вашего устройства</footer>
+
+<script>
+const CITIES = [
+  { name:'Москва',       flag:'🇷🇺', tz:'Europe/Moscow' },
+  { name:'Нью-Йорк',     flag:'🇺🇸', tz:'America/New_York' },
+  { name:'Лос-Анджелес', flag:'🇺🇸', tz:'America/Los_Angeles' }
+];
+
+let offset = 0;      // разница между серверным временем и временем устройства
+let synced = false;
+
+const clocksEl = document.getElementById('clocks');
+const dotEl    = document.getElementById('dot');
+const statusEl = document.getElementById('statusText');
+
+// создаём карточки
+CITIES.forEach((city, i) => {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <div class="city"><span class="flag">${city.flag}</span> ${city.name}</div>
+    <div class="time">
+      <span id="h-${i}">--</span><span class="colon">:</span><span id="m-${i}">--</span><span class="colon">:</span><span id="s-${i}">--</span>
+    </div>
+    <div class="date" id="d-${i}">—</div>
+  `;
+  clocksEl.appendChild(card);
+});
+
+const timeFmtCache = {};
+const dateFmtCache = {};
+
+function getTimeFmt(tz) {
+  return timeFmtCache[tz] ||= new Intl.DateTimeFormat('ru-RU', {
+    timeZone: tz, hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
+  });
+}
+function getDateFmt(tz) {
+  return dateFmtCache[tz] ||= new Intl.DateTimeFormat('ru-RU', {
+    timeZone: tz, weekday:'long', day:'numeric', month:'long', year:'numeric'
+  });
 }
 
-body {
-	color: white;
-	background-color: black;
-	overflow: hidden;
-	touch-action: none;
+function tick() {
+  const now = new Date(Date.now() + offset);
+  CITIES.forEach((city, i) => {
+    const parts = {};
+    getTimeFmt(city.tz).formatToParts(now).forEach(p => parts[p.type] = p.value);
+    document.getElementById('h-'+i).textContent = parts.hour;
+    document.getElementById('m-'+i).textContent = parts.minute;
+    document.getElementById('s-'+i).textContent = parts.second;
+
+    let d = getDateFmt(city.tz).format(now);
+    d = d.charAt(0).toUpperCase() + d.slice(1);
+    document.getElementById('d-'+i).textContent = d;
+  });
 }
 
-#canvas {
-	display: block;
+async function sync() {
+  const apis = [
+    { url:'https://timeapi.io/api/Time/current/zone?timeZone=UTC',
+      parse: d => new Date(d.dateTime.endsWith('Z') ? d.dateTime : d.dateTime + 'Z') },
+    { url:'https://worldtimeapi.org/api/timezone/Etc/UTC',
+      parse: d => new Date(d.utc_datetime) }
+  ];
+
+  for (const api of apis) {
+    try {
+      const res = await fetch(api.url, { cache:'no-store' });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const serverDate = api.parse(data);
+      if (serverDate && !isNaN(serverDate.getTime())) {
+        offset = serverDate.getTime() - Date.now();
+        synced = true;
+        dotEl.classList.add('ok');
+        statusEl.textContent = 'Синхронизировано с сервером точного времени';
+        tick();
+        return true;
+      }
+    } catch(e) { /* пробуем следующий */ }
+  }
+
+  if (!synced) {
+    statusEl.textContent = 'Не удалось синхронизироваться, повторим попытку...';
+    setTimeout(sync, 5000);
+  }
+  return false;
 }
 
-#canvas:focus {
-	outline: none;
-}
-
-#status, #status-splash, #status-progress {
-	position: absolute;
-	left: 0;
-	right: 0;
-}
-
-#status, #status-splash {
-	top: 0;
-	bottom: 0;
-}
-
-#status {
-	background-color: #242424;
-	display: flex;
-	flex-direction: column;
-	justify-content: center;
-	align-items: center;
-	visibility: hidden;
-}
-
-#status-splash {
-	max-height: 100%;
-	max-width: 100%;
-	margin: auto;
-}
-
-#status-splash.show-image--false {
-	display: none;
-}
-
-#status-splash.fullsize--true {
-	height: 100%;
-	width: 100%;
-	object-fit: contain;
-}
-
-#status-splash.use-filter--false {
-	image-rendering: pixelated;
-}
-
-#status-progress, #status-notice {
-	display: none;
-}
-
-#status-progress {
-	bottom: 10%;
-	width: 50%;
-	margin: 0 auto;
-}
-
-#status-notice {
-	background-color: #5b3943;
-	border-radius: 0.5rem;
-	border: 1px solid #9b3943;
-	color: #e0e0e0;
-	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
-	line-height: 1.3;
-	margin: 0 2rem;
-	overflow: hidden;
-	padding: 1rem;
-	text-align: center;
-	z-index: 1;
-}
-		</style>
-		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
-<link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
-
-	</head>
-	<body>
-		<canvas id="canvas">
-			Your browser does not support the canvas tag.
-		</canvas>
-
-		<noscript>
-			Your browser does not support JavaScript.
-		</noscript>
-
-		<div id="status">
-			<img id="status-splash" class="show-image--true fullsize--true use-filter--true" src="index.png" alt="">
-			<progress id="status-progress"></progress>
-			<div id="status-notice"></div>
-		</div>
-
-		<script src="index.js"></script>
-		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":16084,"index.wasm":39513091},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
-const GODOT_THREADS_ENABLED = false;
-const engine = new Engine(GODOT_CONFIG);
-
-(function () {
-	const statusOverlay = document.getElementById('status');
-	const statusProgress = document.getElementById('status-progress');
-	const statusNotice = document.getElementById('status-notice');
-
-	let initializing = true;
-	let statusMode = '';
-
-	function setStatusMode(mode) {
-		if (statusMode === mode || !initializing) {
-			return;
-		}
-		if (mode === 'hidden') {
-			statusOverlay.remove();
-			initializing = false;
-			return;
-		}
-		statusOverlay.style.visibility = 'visible';
-		statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
-		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
-		statusMode = mode;
-	}
-
-	function setStatusNotice(text) {
-		while (statusNotice.lastChild) {
-			statusNotice.removeChild(statusNotice.lastChild);
-		}
-		const lines = text.split('\n');
-		lines.forEach((line) => {
-			statusNotice.appendChild(document.createTextNode(line));
-			statusNotice.appendChild(document.createElement('br'));
-		});
-	}
-
-	function displayFailureNotice(err) {
-		console.error(err);
-		if (err instanceof Error) {
-			setStatusNotice(err.message);
-		} else if (typeof err === 'string') {
-			setStatusNotice(err);
-		} else {
-			setStatusNotice('An unknown error occurred.');
-		}
-		setStatusMode('notice');
-		initializing = false;
-	}
-
-	const missing = Engine.getMissingFeatures({
-		threads: GODOT_THREADS_ENABLED,
-	});
-
-	if (missing.length !== 0) {
-		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
-			let serviceWorkerRegistrationPromise;
-			try {
-				serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration();
-			} catch (err) {
-				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
-			}
-			// There's a chance that installing the service worker would fix the issue
-			Promise.race([
-				serviceWorkerRegistrationPromise.then((registration) => {
-					if (registration != null) {
-						return Promise.reject(new Error('Service worker already exists.'));
-					}
-					return registration;
-				}).then(() => engine.installServiceWorker()),
-				// For some reason, `getRegistration()` can stall
-				new Promise((resolve) => {
-					setTimeout(() => resolve(), 2000);
-				}),
-			]).then(() => {
-				// Reload if there was no error.
-				window.location.reload();
-			}).catch((err) => {
-				console.error('Error while registering service worker:', err);
-			});
-		} else {
-			// Display the message as usual
-			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
-			displayFailureNotice(missingMsg + missing.join('\n'));
-		}
-	} else {
-		setStatusMode('progress');
-		engine.startGame({
-			'onProgress': function (current, total) {
-				if (current > 0 && total > 0) {
-					statusProgress.value = current;
-					statusProgress.max = total;
-				} else {
-					statusProgress.removeAttribute('value');
-					statusProgress.removeAttribute('max');
-				}
-			},
-		}).then(() => {
-			setStatusMode('hidden');
-		}, displayFailureNotice);
-	}
-}());
-		</script>
-	</body>
+// старт
+tick();
+sync();
+setInterval(tick, 1000);          // обновление каждую секунду
+setInterval(sync, 10 * 60 * 1000); // ре-синхронизация раз в 10 минут
+</script>
+</body>
 </html>
-
