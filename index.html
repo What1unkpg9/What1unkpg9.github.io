@@ -2,175 +2,839 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Точное время — Москва и США</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Очистка метаданных — удаление EXIF и GPS из фото</title>
+<meta name="description" content="Локальный инструмент для удаления EXIF, GPS и данных камеры из JPEG и PNG. Всё работает в браузере, файлы никуда не отправляются.">
 <style>
-  :root { --accent: #4fc3f7; }
-  * { margin:0; padding:0; box-sizing:border-box; }
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body { min-height: 100%; }
+
   body {
-    min-height:100vh;
-    background:#05070f radial-gradient(circle at 50% 0%, #14213d 0%, #05070f 60%);
-    color:#e8eefc;
-    font-family:'Segoe UI', system-ui, -apple-system, sans-serif;
-    display:flex; flex-direction:column; align-items:center;
-    padding:40px 20px;
+    margin: 0;
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+    background: #05070d;
+    color: #e9edf7;
+    line-height: 1.5;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 52px 18px 72px;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
-  header { text-align:center; margin-bottom:40px; }
+
+  /* ---------- Фоновые «орбы» ---------- */
+  .orb {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(100px);
+    pointer-events: none;
+    z-index: 0;
+    will-change: transform;
+  }
+  .orb-1 { width: 480px; height: 480px; background: #2563eb; top: -180px; left: -140px; opacity: .55; }
+  .orb-2 { width: 440px; height: 440px; background: #7c3aed; bottom: -170px; right: -120px; opacity: .50; }
+  .orb-3 { width: 360px; height: 360px; background: #06b6d4; top: 42%; left: 58%; opacity: .22; }
+
+  .wrap {
+    width: 100%;
+    max-width: 760px;
+    position: relative;
+    z-index: 2;
+  }
+
+  /* ---------- Шапка ---------- */
+  header { text-align: center; margin-bottom: 26px; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: #8ea3c6;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.10);
+    padding: 7px 14px;
+    border-radius: 999px;
+    margin-bottom: 18px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .badge .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #6ee7ff;
+    box-shadow: 0 0 10px #6ee7ff;
+  }
+
   h1 {
-    font-weight:300; font-size:2rem; letter-spacing:.15em;
-    text-transform:uppercase;
-    background:linear-gradient(90deg,#4fc3f7,#7e57c2,#4fc3f7);
-    -webkit-background-clip:text; background-clip:text; color:transparent;
+    font-size: clamp(26px, 5.2vw, 40px);
+    font-weight: 750;
+    letter-spacing: -0.025em;
+    margin: 0;
+    background: linear-gradient(180deg, #ffffff 10%, #9fb3d1 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
-  .status {
-    margin-top:12px; font-size:.85rem; color:#7a8aa8;
-    display:flex; align-items:center; justify-content:center; gap:8px;
+
+  .sub {
+    margin: 10px auto 0;
+    max-width: 520px;
+    font-size: 15px;
+    color: #8b98b3;
   }
-  .dot { width:8px; height:8px; border-radius:50%; background:#ff5252; box-shadow:0 0 8px #ff5252; }
-  .dot.ok { background:#4caf50; box-shadow:0 0 8px #4caf50; }
-  .clocks {
-    display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));
-    gap:24px; width:100%; max-width:1100px;
+
+  /* ---------- Плашка приватности ---------- */
+  .privacy {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 17px;
+    border-radius: 16px;
+    background: rgba(52, 211, 153, .075);
+    border: 1px solid rgba(52, 211, 153, .22);
+    color: #a7f3d0;
+    font-size: 13.5px;
+    line-height: 1.4;
+    margin-bottom: 20px;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
   }
+  .privacy .pulse {
+    flex: 0 0 auto;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: #34d399;
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, .7);
+    animation: pulse 2.2s infinite;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(52,211,153,.65); }
+    70%  { box-shadow: 0 0 0 11px rgba(52,211,153,0); }
+    100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); }
+  }
+  .privacy strong { color: #d1fae5; font-weight: 650; }
+
+  /* ---------- Стеклянные карточки ---------- */
   .card {
-    background:linear-gradient(160deg, rgba(255,255,255,.06), rgba(255,255,255,.01));
-    border:1px solid rgba(255,255,255,.08);
-    border-radius:20px;
-    padding:30px 24px;
-    text-align:center;
-    backdrop-filter:blur(10px);
-    box-shadow:0 20px 40px -20px rgba(0,0,0,.8);
-    transition:transform .3s, border-color .3s;
+    background: rgba(255, 255, 255, .045);
+    border: 1px solid rgba(255, 255, 255, .10);
+    border-radius: 26px;
+    backdrop-filter: blur(26px) saturate(140%);
+    -webkit-backdrop-filter: blur(26px) saturate(140%);
+    box-shadow: 0 26px 70px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .08);
   }
-  .card:hover { transform:translateY(-4px); border-color:rgba(79,195,247,.4); }
-  .city {
-    font-size:1.1rem; letter-spacing:.1em;
-    text-transform:uppercase; color:#a8b6d4; margin-bottom:6px;
+
+  /* ---------- Зона загрузки ---------- */
+  .dropzone {
+    padding: 54px 26px;
+    text-align: center;
+    cursor: pointer;
+    border-style: dashed;
+    border-width: 1.5px;
+    border-color: rgba(255, 255, 255, .17);
+    transition: transform .25s ease, border-color .25s ease, background .25s ease, box-shadow .25s ease;
+    outline: none;
+    user-select: none;
   }
-  .flag { font-size:1.4rem; }
-  .time {
-    font-family:'Courier New', monospace;
-    font-size:clamp(2.4rem, 7vw, 3.6rem);
-    font-weight:700;
-    font-variant-numeric:tabular-nums;
-    letter-spacing:.04em;
-    color:#fff;
-    text-shadow:0 0 24px rgba(79,195,247,.5);
-    margin:14px 0 8px;
+  .dropzone:hover,
+  .dropzone:focus-visible {
+    border-color: rgba(110, 231, 255, .55);
+    background: rgba(110, 231, 255, .05);
   }
-  .colon { color:var(--accent); animation:blink 1s steps(2, start) infinite; }
-  @keyframes blink { to { opacity:.25; } }
-  .date { font-size:.9rem; color:#7a8aa8; }
-  footer { margin-top:40px; font-size:.75rem; color:#4a5875; text-align:center; }
+  .dropzone.drag {
+    border-color: rgba(110, 231, 255, .9);
+    background: rgba(110, 231, 255, .09);
+    transform: translateY(-3px) scale(1.005);
+    box-shadow: 0 30px 80px rgba(110, 231, 255, .18), inset 0 1px 0 rgba(255,255,255,.12);
+  }
+  .dropzone.busy { pointer-events: none; opacity: .55; }
+
+  .dz-icon {
+    width: 68px; height: 68px;
+    margin: 0 auto 20px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 20px;
+    color: #0a1220;
+    background: linear-gradient(135deg, #6ee7ff, #8b5cf6);
+    box-shadow: 0 14px 34px rgba(110, 231, 255, .30);
+    transition: transform .25s ease;
+  }
+  .dropzone:hover .dz-icon,
+  .dropzone.drag .dz-icon { transform: translateY(-3px) rotate(-3deg); }
+
+  .dz-title {
+    font-size: 18px;
+    font-weight: 650;
+    margin: 0 0 6px;
+    color: #eef3fc;
+  }
+  .dz-sub {
+    margin: 0;
+    font-size: 14.5px;
+    color: #8b98b3;
+  }
+  .dz-sub .link {
+    color: #6ee7ff;
+    font-weight: 600;
+    border-bottom: 1px solid rgba(110, 231, 255, .35);
+  }
+  .dz-hint {
+    margin: 18px 0 0;
+    font-size: 12px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #63708c;
+    font-weight: 600;
+  }
+
+  /* ---------- Результат ---------- */
+  #result { padding: 26px; }
+
+  .result-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+
+  .preview {
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, .09);
+    padding: 10px;
+    min-height: 190px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(255, 255, 255, .02);
+    background-image:
+      linear-gradient(45deg, rgba(255,255,255,.045) 25%, transparent 25%),
+      linear-gradient(-45deg, rgba(255,255,255,.045) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, rgba(255,255,255,.045) 75%),
+      linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.045) 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+    overflow: hidden;
+  }
+  .preview img {
+    display: block;
+    max-width: 100%;
+    max-height: 290px;
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+  }
+
+  .file-name {
+    font-size: 15.5px;
+    font-weight: 650;
+    margin: 0 0 14px;
+    word-break: break-all;
+    color: #eef3fc;
+    line-height: 1.35;
+  }
+
+  .stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .stat {
+    flex: 1 1 96px;
+    background: rgba(255, 255, 255, .05);
+    border: 1px solid rgba(255, 255, 255, .085);
+    border-radius: 15px;
+    padding: 12px 14px;
+  }
+  .stat .label {
+    display: block;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: .09em;
+    color: #7d8aa5;
+    margin-bottom: 5px;
+    font-weight: 650;
+  }
+  .stat .value {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -.01em;
+    color: #e9edf7;
+  }
+  .stat .value.good { color: #6ee7b7; }
+
+  .meta-info {
+    font-size: 13px;
+    color: #8b98b3;
+    margin: 0 0 20px;
+    line-height: 1.55;
+    padding: 11px 14px;
+    border-radius: 13px;
+    background: rgba(255, 255, 255, .035);
+    border: 1px solid rgba(255, 255, 255, .07);
+  }
+  .meta-info.ok { background: rgba(52, 211, 153, .07); border-color: rgba(52, 211, 153, .2); color: #a7f3d0; }
+  .meta-info.err { background: rgba(248, 113, 113, .08); border-color: rgba(248, 113, 113, .25); color: #fecaca; }
+
+  /* ---------- Кнопки ---------- */
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    font-family: inherit;
+    font-size: 14.5px;
+    font-weight: 650;
+    padding: 13px 22px;
+    border-radius: 15px;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
+    white-space: nowrap;
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, #6ee7ff, #8b5cf6);
+    color: #06101c;
+    box-shadow: 0 12px 32px rgba(110, 231, 255, .26);
+    flex: 1 1 auto;
+  }
+  .btn.primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 18px 42px rgba(110, 231, 255, .38);
+  }
+  .btn.ghost {
+    background: rgba(255, 255, 255, .06);
+    color: #cbd6ea;
+    border: 1px solid rgba(255, 255, 255, .12);
+  }
+  .btn.ghost:hover { background: rgba(255, 255, 255, .11); transform: translateY(-2px); }
+
+  /* ---------- Футер ---------- */
+  footer {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 12.5px;
+    color: #5f6b85;
+    line-height: 1.7;
+  }
+  footer code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.09);
+    padding: 1px 6px;
+    border-radius: 6px;
+    color: #93a4c2;
+  }
+
+  [hidden] { display: none !important; }
+
+  @media (max-width: 660px) {
+    body { padding: 32px 14px 52px; }
+    .result-grid { grid-template-columns: 1fr; }
+    .dropzone { padding: 40px 18px; }
+    #result { padding: 20px; }
+    .btn { width: 100%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
 </style>
 </head>
 <body>
+
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+
+<main class="wrap">
+
   <header>
-    <h1>Точное время</h1>
-    <div class="status">
-      <span class="dot" id="dot"></span>
-      <span id="statusText">Синхронизация...</span>
-    </div>
+    <div class="badge"><span class="dot"></span> 100% client-side</div>
+    <h1>Очистка метаданных</h1>
+    <p class="sub">Удаляет EXIF, GPS-координаты, модель камеры и прочие скрытые данные из JPEG и PNG — без потери качества.</p>
   </header>
 
-  <div class="clocks" id="clocks"></div>
+  <div class="privacy">
+    <span class="pulse"></span>
+    <span><strong>100% приватно:</strong> обработка происходит прямо на вашем устройстве, файлы не отправляются на сервер.</span>
+  </div>
 
-  <footer>Время берётся с серверов точного времени, а не с вашего устройства</footer>
+  <!-- Зона загрузки -->
+  <section class="card dropzone" id="dropzone" role="button" tabindex="0" aria-label="Загрузить изображение">
+    <div class="dz-icon">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="3.5"/>
+        <circle cx="8.6" cy="8.6" r="1.6"/>
+        <path d="M20.5 15.2 16 10.7 5.2 21"/>
+      </svg>
+    </div>
+    <h2 class="dz-title" id="dzTitle">Перетащите изображение сюда</h2>
+    <p class="dz-sub">или <span class="link">выберите файл</span> на устройстве</p>
+    <p class="dz-hint">JPEG · PNG · обработка в браузере</p>
+    <input type="file" id="fileInput" accept="image/jpeg,image/png,image/*" hidden>
+  </section>
+
+  <!-- Результат -->
+  <section class="card" id="result" hidden>
+    <div class="result-grid">
+      <div class="preview"><img id="preview" alt="Предпросмотр очищенного изображения"></div>
+
+      <div>
+        <h2 class="file-name" id="fileName"></h2>
+
+        <div class="stats">
+          <div class="stat">
+            <span class="label">Было</span>
+            <span class="value" id="sizeOld">—</span>
+          </div>
+          <div class="stat">
+            <span class="label">Стало</span>
+            <span class="value" id="sizeNew">—</span>
+          </div>
+          <div class="stat">
+            <span class="label">Экономия</span>
+            <span class="value good" id="sizeSaved">—</span>
+          </div>
+        </div>
+
+        <p class="meta-info" id="metaInfo"></p>
+
+        <div class="actions">
+          <a class="btn primary" id="downloadBtn" download>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 21h16"/>
+            </svg>
+            Скачать очищенное фото
+          </a>
+          <button class="btn ghost" id="resetBtn" type="button">Другое фото</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Работает офлайн · Никаких библиотек и трекеров ·<br>
+    JPEG очищается бинарно (без перекодирования), PNG — удалением мета-чанков
+  </footer>
+
+</main>
 
 <script>
-const CITIES = [
-  { name:'Москва',       flag:'🇷🇺', tz:'Europe/Moscow' },
-  { name:'Нью-Йорк',     flag:'🇺🇸', tz:'America/New_York' },
-  { name:'Лос-Анджелес', flag:'🇺🇸', tz:'America/Los_Angeles' }
-];
+(function () {
+  'use strict';
 
-let offset = 0;      // разница между серверным временем и временем устройства
-let synced = false;
+  /* ============================================================
+   *  УТИЛИТЫ
+   * ============================================================ */
 
-const clocksEl = document.getElementById('clocks');
-const dotEl    = document.getElementById('dot');
-const statusEl = document.getElementById('statusText');
+  const $ = (id) => document.getElementById(id);
 
-// создаём карточки
-CITIES.forEach((city, i) => {
-  const card = document.createElement('div');
-  card.className = 'card';
-  card.innerHTML = `
-    <div class="city"><span class="flag">${city.flag}</span> ${city.name}</div>
-    <div class="time">
-      <span id="h-${i}">--</span><span class="colon">:</span><span id="m-${i}">--</span><span class="colon">:</span><span id="s-${i}">--</span>
-    </div>
-    <div class="date" id="d-${i}">—</div>
-  `;
-  clocksEl.appendChild(card);
-});
+  const el = {
+    dropzone:  $('dropzone'),
+    fileInput: $('fileInput'),
+    dzTitle:   $('dzTitle'),
+    result:    $('result'),
+    preview:   $('preview'),
+    fileName:  $('fileName'),
+    sizeOld:   $('sizeOld'),
+    sizeNew:   $('sizeNew'),
+    sizeSaved: $('sizeSaved'),
+    metaInfo:  $('metaInfo'),
+    download:  $('downloadBtn'),
+    reset:     $('resetBtn')
+  };
 
-const timeFmtCache = {};
-const dateFmtCache = {};
+  let currentUrl = null;   // объектная ссылка на превью (для очистки памяти)
+  let currentBlob = null;
 
-function getTimeFmt(tz) {
-  return timeFmtCache[tz] ||= new Intl.DateTimeFormat('ru-RU', {
-    timeZone: tz, hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
-  });
-}
-function getDateFmt(tz) {
-  return dateFmtCache[tz] ||= new Intl.DateTimeFormat('ru-RU', {
-    timeZone: tz, weekday:'long', day:'numeric', month:'long', year:'numeric'
-  });
-}
+  function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + ' Б';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' МБ';
+  }
 
-function tick() {
-  const now = new Date(Date.now() + offset);
-  CITIES.forEach((city, i) => {
-    const parts = {};
-    getTimeFmt(city.tz).formatToParts(now).forEach(p => parts[p.type] = p.value);
-    document.getElementById('h-'+i).textContent = parts.hour;
-    document.getElementById('m-'+i).textContent = parts.minute;
-    document.getElementById('s-'+i).textContent = parts.second;
+  /* Определяем тип файла по «магическим» байтам, а не по MIME —
+     так надёжнее: браузер может отдать пустой type. */
+  function detectType(b) {
+    if (b.length > 3 && b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return 'jpeg';
+    if (b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47 &&
+        b[4] === 0x0D && b[5] === 0x0A && b[6] === 0x1A && b[7] === 0x0A) return 'png';
+    return null;
+  }
 
-    let d = getDateFmt(city.tz).format(now);
-    d = d.charAt(0).toUpperCase() + d.slice(1);
-    document.getElementById('d-'+i).textContent = d;
-  });
-}
+  /* ============================================================
+   *  JPEG: бинарная пересборка без мета-сегментов
+   *
+   *  Формат: SOI (FFD8) → набор сегментов → SOS (FFDA) + данные → EOI (FFD9)
+   *  Каждый сегмент: FF <marker> <len hi> <len lo> <payload...>
+   *  len включает сами два байта длины.
+   *
+   *  Удаляем:  APP1 (EXIF / XMP), APP3..APP13, APP15, COM (комментарии)
+   *  Оставляем: APP0 (JFIF), APP2 (ICC-профиль цвета), APP14 (Adobe),
+   *             а также все структурные сегменты (DQT, DHT, SOF, SOS…)
+   *  Сжатые данные пикселей не трогаем → качество не меняется вообще.
+   * ============================================================ */
 
-async function sync() {
-  const apis = [
-    { url:'https://timeapi.io/api/Time/current/zone?timeZone=UTC',
-      parse: d => new Date(d.dateTime.endsWith('Z') ? d.dateTime : d.dateTime + 'Z') },
-    { url:'https://worldtimeapi.org/api/timezone/Etc/UTC',
-      parse: d => new Date(d.utc_datetime) }
-  ];
+  const JPEG_KEEP = { 0xE0: true, 0xE2: true, 0xEE: true };
 
-  for (const api of apis) {
-    try {
-      const res = await fetch(api.url, { cache:'no-store' });
-      if (!res.ok) continue;
-      const data = await res.json();
-      const serverDate = api.parse(data);
-      if (serverDate && !isNaN(serverDate.getTime())) {
-        offset = serverDate.getTime() - Date.now();
-        synced = true;
-        dotEl.classList.add('ok');
-        statusEl.textContent = 'Синхронизировано с сервером точного времени';
-        tick();
-        return true;
+  const JPEG_NAMES = {
+    0xE1: 'EXIF / XMP',
+    0xE3: 'APP3 (Meta)',
+    0xE4: 'APP4',
+    0xE5: 'APP5',
+    0xE6: 'APP6',
+    0xE7: 'APP7',
+    0xE8: 'APP8',
+    0xE9: 'APP9',
+    0xEA: 'APP10',
+    0xEB: 'APP11',
+    0xEC: 'APP12 (Ducky)',
+    0xED: 'IPTC / Photoshop',
+    0xEF: 'APP15',
+    0xFE: 'Комментарий'
+  };
+
+  function isRemovableJpegMarker(marker) {
+    if (marker === 0xFE) return true;                    // COM
+    if (marker >= 0xE1 && marker <= 0xEF) return !JPEG_KEEP[marker]; // APPn
+    return false;
+  }
+
+  function stripJpeg(bytes) {
+    const parts = [bytes.subarray(0, 2)]; // SOI
+    const removed = [];
+    let pos = 2;
+
+    while (pos < bytes.length - 1) {
+      // Ожидаем маркер 0xFF
+      if (bytes[pos] !== 0xFF) {
+        parts.push(bytes.subarray(pos));   // повреждённый файл — копируем остаток
+        break;
       }
-    } catch(e) { /* пробуем следующий */ }
+
+      // Пропускаем байты-заполнители 0xFF
+      let m = pos + 1;
+      while (m < bytes.length && bytes[m] === 0xFF) m++;
+      if (m >= bytes.length) { parts.push(bytes.subarray(pos)); break; }
+
+      const marker = bytes[m];
+
+      // Маркеры без полезной нагрузки
+      if (marker === 0x01 || marker === 0xD8 || (marker >= 0xD0 && marker <= 0xD7)) {
+        parts.push(bytes.subarray(pos, m + 1));
+        pos = m + 1;
+        continue;
+      }
+
+      // EOI или начало сжатых данных — копируем всё до конца файла
+      if (marker === 0xD9 || marker === 0xDA) {
+        parts.push(bytes.subarray(pos));
+        break;
+      }
+
+      // Сегмент с длиной
+      if (m + 2 >= bytes.length) { parts.push(bytes.subarray(pos)); break; }
+
+      const segLen = (bytes[m + 1] << 8) | bytes[m + 2];
+      const segEnd = m + 1 + segLen;
+
+      if (segLen < 2 || segEnd > bytes.length) {
+        parts.push(bytes.subarray(pos));   // битые данные — не рискуем
+        break;
+      }
+
+      if (isRemovableJpegMarker(marker)) {
+        removed.push(JPEG_NAMES[marker] || ('APP' + (marker - 0xE0)));
+      } else {
+        parts.push(bytes.subarray(pos, segEnd));
+      }
+
+      pos = segEnd;
+    }
+
+    return { parts, removed };
   }
 
-  if (!synced) {
-    statusEl.textContent = 'Не удалось синхронизироваться, повторим попытку...';
-    setTimeout(sync, 5000);
-  }
-  return false;
-}
+  /* ============================================================
+   *  PNG: удаление мета-чанков
+   *
+   *  Чанк: <length:4> <type:4> <data:length> <crc:4>
+   *  Удаляем: tEXt, zTXt, iTXt, eXIf, tIME, dSIG
+   *  Остальные копируем побайтово вместе с CRC — пересчёт не нужен.
+   * ============================================================ */
 
-// старт
-tick();
-sync();
-setInterval(tick, 1000);          // обновление каждую секунду
-setInterval(sync, 10 * 60 * 1000); // ре-синхронизация раз в 10 минут
+  const PNG_KILL = new Set(['tEXt', 'zTXt', 'iTXt', 'eXIf', 'tIME', 'dSIG']);
+
+  function stripPng(bytes) {
+    const parts = [bytes.subarray(0, 8)]; // сигнатура
+    const removed = [];
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let pos = 8;
+
+    while (pos + 12 <= bytes.length) {
+      const len = view.getUint32(pos);
+      const type = String.fromCharCode(bytes[pos + 4], bytes[pos + 5], bytes[pos + 6], bytes[pos + 7]);
+      const end = pos + 12 + len;
+
+      if (end > bytes.length) { parts.push(bytes.subarray(pos)); break; }
+
+      if (PNG_KILL.has(type)) {
+        removed.push(type);
+      } else {
+        parts.push(bytes.subarray(pos, end));
+      }
+
+      pos = end;
+      if (type === 'IEND') break;
+    }
+
+    return { parts, removed };
+  }
+
+  /* ============================================================
+   *  FALLBACK для прочих форматов (WebP, GIF, BMP, HEIC…)
+   *  Перекодируем через Canvas в PNG — метаданные при этом теряются.
+   * ============================================================ */
+
+  function reencodeToPng(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || img.width;
+          canvas.height = img.naturalHeight || img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          canvas.toBlob((blob) => {
+            URL.revokeObjectURL(url);
+            blob ? resolve(blob) : reject(new Error('Не удалось перекодировать изображение.'));
+          }, 'image/png');
+        } catch (e) {
+          URL.revokeObjectURL(url);
+          reject(e);
+        }
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Не удалось прочитать изображение. Возможно, формат не поддерживается браузером.'));
+      };
+
+      img.src = url;
+    });
+  }
+
+  /* ============================================================
+   *  ОСНОВНОЙ ПРОЦЕСС
+   * ============================================================ */
+
+  async function processFile(file) {
+    if (!file) return;
+
+    setBusy(true);
+
+    try {
+      const buffer = new Uint8Array(await file.arrayBuffer());
+      const type = detectType(buffer);
+
+      let blob;
+      let removed = [];
+      let note = '';
+
+      if (type === 'jpeg') {
+        const res = stripJpeg(buffer);
+        blob = new Blob(res.parts, { type: 'image/jpeg' });
+        removed = res.removed;
+      } else if (type === 'png') {
+        const res = stripPng(buffer);
+        blob = new Blob(res.parts, { type: 'image/png' });
+        removed = res.removed;
+      } else {
+        blob = await reencodeToPng(file);
+        note = 'Формат не JPEG/PNG — изображение перекодировано в PNG без метаданных.';
+      }
+
+      if (blob.size === 0) throw new Error('Результат пуст — файл повреждён.');
+
+      showResult(file, blob, removed, note);
+
+    } catch (err) {
+      console.error(err);
+      setBusy(false);
+      alert('Ошибка: ' + (err && err.message ? err.message : 'не удалось обработать файл.'));
+    }
+  }
+
+  function showResult(originalFile, blob, removed, note) {
+    setBusy(false);
+
+    // Освобождаем предыдущий URL превью
+    if (currentUrl) URL.revokeObjectURL(currentUrl);
+    currentUrl = URL.createObjectURL(blob);
+    currentBlob = blob;
+
+    el.preview.src = currentUrl;
+    el.preview.alt = 'Очищенное изображение: ' + originalFile.name;
+
+    el.fileName.textContent = originalFile.name;
+
+    // Размеры
+    el.sizeOld.textContent = formatBytes(originalFile.size);
+    el.sizeNew.textContent = formatBytes(blob.size);
+
+    const diff = originalFile.size - blob.size;
+    if (diff > 0) {
+      const pct = ((diff / originalFile.size) * 100).toFixed(1);
+      el.sizeSaved.textContent = '−' + pct + '%';
+      el.sizeSaved.className = 'value good';
+    } else if (diff === 0) {
+      el.sizeSaved.textContent = '0%';
+      el.sizeSaved.className = 'value';
+    } else {
+      el.sizeSaved.textContent = '+' + formatBytes(-diff);
+      el.sizeSaved.className = 'value';
+    }
+
+    // Информация об удалённых метаданных
+    el.metaInfo.className = 'meta-info';
+    if (removed.length > 0) {
+      // Убираем дубликаты названий, сохраняя порядок
+      const uniq = [...new Set(removed)];
+      el.metaInfo.textContent = 'Удалено (' + removed.length + '): ' + uniq.join(', ') +
+                                '. Данные камеры, дата съёмки и GPS-координаты больше не содержатся в файле.';
+      el.metaInfo.classList.add('ok');
+    } else if (note) {
+      el.metaInfo.textContent = note;
+      el.metaInfo.classList.add('ok');
+    } else {
+      el.metaInfo.textContent = 'Метаданные не обнаружены — файл уже был чистым. Изображение сохранено без изменений.';
+    }
+
+    // Имя и ссылка на скачивание
+    const ext = blob.type === 'image/png' ? '.png' : '.jpg';
+    const base = originalFile.name.replace(/\.[^.]+$/, '') || 'image';
+    el.download.href = currentUrl;
+    el.download.download = base + '-clean' + ext;
+    el.download.setAttribute('download', base + '-clean' + ext);
+
+    // Переключаем видимость
+    el.dropzone.hidden = true;
+    el.result.hidden = false;
+    el.result.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function setBusy(busy) {
+    el.dropzone.classList.toggle('busy', busy);
+    el.dzTitle.textContent = busy ? 'Обрабатываем…' : 'Перетащите изображение сюда';
+  }
+
+  function resetApp() {
+    if (currentUrl) { URL.revokeObjectURL(currentUrl); currentUrl = null; }
+    currentBlob = null;
+    el.preview.removeAttribute('src');
+    el.download.removeAttribute('href');
+    el.result.hidden = true;
+    el.dropzone.hidden = false;
+    el.fileInput.value = '';
+    setBusy(false);
+  }
+
+  /* ============================================================
+   *  СОБЫТИЯ
+   * ============================================================ */
+
+  // Клик по зоне → открыть диалог выбора файла
+  el.dropzone.addEventListener('click', () => el.fileInput.click());
+
+  // Клавиатурная доступность
+  el.dropzone.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      el.fileInput.click();
+    }
+  });
+
+  el.fileInput.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) processFile(file);
+    e.target.value = ''; // позволяет выбрать тот же файл повторно
+  });
+
+  // Drag & Drop (счётчик depth защищает от «мигания» на дочерних элементах)
+  let dragDepth = 0;
+
+  ['dragenter', 'dragover'].forEach((evt) => {
+    el.dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (evt === 'dragenter') dragDepth++;
+      el.dropzone.classList.add('drag');
+    });
+  });
+
+  ['dragleave', 'dragend'].forEach((evt) => {
+    el.dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (evt === 'dragleave') dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) el.dropzone.classList.remove('drag');
+    });
+  });
+
+  el.dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepth = 0;
+    el.dropzone.classList.remove('drag');
+
+    const dt = e.dataTransfer;
+    if (!dt) return;
+
+    // Ищем первый файл-изображение
+    let file = null;
+    if (dt.files && dt.files.length) {
+      for (let i = 0; i < dt.files.length; i++) {
+        if (dt.files[i].type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp)$/i.test(dt.files[i].name)) {
+          file = dt.files[i];
+          break;
+        }
+      }
+    }
+    if (file) processFile(file);
+  });
+
+  // Не даём браузеру открыть картинку вместо нашей страницы
+  ['dragover', 'drop'].forEach((evt) => {
+    window.addEventListener(evt, (e) => {
+      if (!el.dropzone.contains(e.target)) e.preventDefault();
+    });
+  });
+
+  el.reset.addEventListener('click', resetApp);
+
+  // Освобождаем память при уходе со страницы
+  window.addEventListener('beforeunload', () => {
+    if (currentUrl) URL.revokeObjectURL(currentUrl);
+  });
+
+})();
 </script>
 </body>
 </html>
